@@ -31,19 +31,28 @@ namespace :sfu do
     desc 'Add SFU terms from the production environment to the default account'
     task :import_enrollment_terms  => :environment do
       terms_url = 'https://canvas.sfu.ca/sfu/api/v1/terms/'
+      puts "Creating terms based on #{terms_url}"
+      
       response = HTTParty.get(terms_url)
       terms = response.parsed_response
       terms.map! { |t| t['enrollment_term'] }
       terms.delete_if { |t| t['name'] == 'Default Term' }
       account = Account.default
+
       terms.each do |t|
-        account.enrollment_terms.create({
-          :name => t['name'],
-          :sis_source_id => t['sis_source_id'],
-          :start_at => t['start_at'],
-          :end_at => t['end_at'],
-          :workflow_state => 'active'
-        }) unless EnrollmentTerm.exists?(:sis_source_id => t['sis_source_id'])
+        exists = EnrollmentTerm.where(:sis_source_id => t['sis_source_id']).exists?
+        if exists
+          puts "Term #{t['name']} (#{t['sis_source_id']}) already exists; skipping"
+        else
+          account.enrollment_terms.create({
+            :name => t['name'],
+            :sis_source_id => t['sis_source_id'],
+            :start_at => t['start_at'],
+            :end_at => t['end_at'],
+            :workflow_state => 'active'
+          })
+          puts "Created term #{t['name']} (#{t['sis_source_id']})"
+        end
       end
     end
   end
