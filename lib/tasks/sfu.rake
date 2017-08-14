@@ -55,5 +55,21 @@ namespace :sfu do
         end
       end
     end
+
+    desc 'Add account authorization config for SFU CAS and make it the default'
+    task :cas_setup => :environment do
+      puts 'Setting up SFU CAS as the default authentication provider'
+      account = Account.default
+      raise 'CAS is already configured!' if account.authentication_providers.active.where(auth_type: 'cas').exists?
+      cas_hash = { 
+        'auth_type' => 'cas',
+        'auth_base' => 'https://cas.sfu.ca/cas/',
+        'jit_provisioning' => false
+      }
+      account_config = account.authentication_providers.build(cas_hash)
+      account_config.save!
+      account_config.insert_at(1)
+      puts 'Done!'
+    end
   end
 end
