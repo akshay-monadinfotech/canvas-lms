@@ -1,4 +1,6 @@
 require 'yaml'
+require 'httparty'
+require 'ruby-progressbar'
 
 namespace :sfu do
   desc 'Reset the default Account name and lti_guid. These values need to be reset after a clone from production.'
@@ -23,6 +25,29 @@ namespace :sfu do
       a.name = account_settings['name']
       a.lti_guid = account_settings['lti_guid']
       a.save!
+    end
+  end
+
+  namespace :docker do
+    desc 'Add SFU terms from the production environment to the default account'
+    task :import_enrollment_terms  => :environment do
+      terms_url = 'https://canvas.sfu.ca/sfu/api/v1/terms/'
+      response = HTTParty.get(terms_url)
+      terms = response.parsed_response
+      terms.map! { |t| t['enrollment_term'] }
+      terms.delete_if { |t| t['name'] == 'Default Term' }
+      account = Account.default
+      progress = ProgressBar.create(:title => 'Creating Terms', :total => terms.count)
+      terms.each do |t|
+        account.enrollment_terms.create({
+          :name => t['name'],
+          :sis_source_id => t['sis_source_id'],
+          :start_at => t['start_at'],
+          :end_at => t['end_at'],
+          :workflow_state => 'active'
+        }) unless EnrollmentTerm.exists?(:sis_source_id => t['sis_source_id'])
+        progress.increment
+      end
     end
   end
 end
