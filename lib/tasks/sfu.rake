@@ -1,6 +1,5 @@
 require 'yaml'
 require 'httparty'
-require 'ruby-progressbar'
 
 namespace :sfu do
   desc 'Reset the default Account name and lti_guid. These values need to be reset after a clone from production.'
@@ -37,7 +36,6 @@ namespace :sfu do
       terms.map! { |t| t['enrollment_term'] }
       terms.delete_if { |t| t['name'] == 'Default Term' }
       account = Account.default
-      progress = ProgressBar.create(:title => 'Creating Terms', :total => terms.count)
       terms.each do |t|
         account.enrollment_terms.create({
           :name => t['name'],
@@ -46,7 +44,6 @@ namespace :sfu do
           :end_at => t['end_at'],
           :workflow_state => 'active'
         }) unless EnrollmentTerm.exists?(:sis_source_id => t['sis_source_id'])
-        progress.increment
       end
     end
   end
