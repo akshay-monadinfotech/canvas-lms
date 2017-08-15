@@ -71,5 +71,11 @@ namespace :sfu do
       account_config.insert_at(1)
       puts 'Done!'
     end
+
+    desc 'Disable the terms of service prompt'
+    task :disable_tos => :environment do
+      puts 'Disabling the Canvas terms of service prompt'
+      puts 'Done!' if Setting.set('terms_required', 'false')
+    end
   end
 end
