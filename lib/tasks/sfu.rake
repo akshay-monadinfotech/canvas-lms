@@ -82,5 +82,41 @@ namespace :sfu do
       puts 'Disabling the Canvas terms of service prompt'
       puts 'Done!' if Setting.set('terms_required', 'false')
     end
+
+    desc 'Create SFU user'
+    task :create_sfu_user, [:username] => :environment do |task, args|
+      throw "Username is required (e.g. sfu:docker:create_sfu_user[kipling])" unless args.username
+      username = args.username
+      
+      # check if user already exists in Canvas
+      throw "User #{username} already exists in Canvas" if Pseudonym.active.where(unique_id: username).exists?
+
+      sfu = sfu_config
+      throw "config/sfu.yml does not contain a `sfu_rest_token`" if sfu['sfu_rest_token'].nil?
+
+      response = HTTParty.get("https://rest.its.sfu.ca/cgi-bin/WebObjects/AOBRestServer.woa/rest/datastore2/global/accountInfo.js?username=#{username}&art=#{sfu['sfu_rest_token']}")
+      throw "No such SFU user: #{username}" if response.code == 404
+      user_bio = response.parsed_response
+
+      # ok now we make the CSV datazzzzz
+      csv_header = "user_id,login_id,first_name,last_name,short_name,email,status"
+      csv_data = "\"#{user_bio['sfuid']}\",\"#{user_bio['username']}\",\"#{user_bio['firstnames']}\",\"#{user_bio['lastname']}\",\"#{user_bio['commonname']}\",\"#{user_bio['username']}@sfu.ca\",\"active\""
+
+      # make ze temp file
+      tmp = Tempfile.new(['user', '.csv'])
+      tmp.write("#{csv_header}\n#{csv_data}")
+      tmp.close
+
+      # arrrgh attachment.rb
+      def tmp.original_filename; File.basename(self); end
+      
+      # create batch
+      batch = SisBatch.create_with_attachment(Account.default, 'instructure_csv', tmp, User.find(1))
+      batch.process_without_send_later
+
+      # check that the user got created...
+      puts "Created user #{username}" if Pseudonym.active.where(unique_id: username).exists? # else throw "Something went wrong creating user #{username}"
+    end
   end
 end
+
