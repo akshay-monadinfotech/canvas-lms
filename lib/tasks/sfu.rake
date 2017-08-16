@@ -86,8 +86,15 @@ namespace :sfu do
 
     desc 'Create SFU user'
     task :create_sfu_user, [:username] => :environment do |task, args|
-      throw "Username is required (e.g. sfu:docker:create_sfu_user[kipling])" unless args.username
+
       username = args.username
+      if (username.nil?)
+        require 'highline/import'
+        while true do
+          username = ask("SFU Computing ID of the user to create: ") { |q| q.echo = true }
+          break if !username.empty? && username.length <= 8
+        end
+      end
       
       # check if user already exists in Canvas
       throw "User #{username} already exists in Canvas" if Pseudonym.active.where(unique_id: username).exists?
