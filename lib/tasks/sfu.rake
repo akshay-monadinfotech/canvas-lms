@@ -124,6 +124,101 @@ namespace :sfu do
       # check that the user got created...
       puts "Created user #{username}" if Pseudonym.active.where(unique_id: username).exists? # else throw "Something went wrong creating user #{username}"
     end
+
+    desc 'Create SFU users based on membership in a maillist'
+    task :create_sfu_users_from_maillist, [:maillist] => :environment do |task, args|
+      maillist = args.maillist
+      force = maillist.nil? ? false : true
+      if (maillist.nil?)
+        require 'highline/import'
+        while true do
+          maillist = ask("SFU Maillist contatining users to create: ") { |q| q.echo = true }
+          break if !maillist.empty?
+        end
+      end
+
+      # check if maillist is valid and has users
+      sfu = sfu_config
+      throw "config/sfu.yml does not contain a `sfu_rest_token`" if sfu['sfu_rest_token'].nil?
+
+      mlresponse = HTTParty.get("https://rest.its.sfu.ca/cgi-bin/WebObjects/AOBRestServer.woa/rest/maillist/members.js?listname=#{maillist}&art=#{sfu['sfu_rest_token']}")
+      members = mlresponse.parsed_response
+      throw "Maillist '#{maillist}' is either invalid or has no members. Please check your list name and try again." if members.empty?
+
+      # filter out non-SFU members (e.g. any member containing `@`)
+      members.select! { |e| !e.include? '@' }
+
+      throw "Maillist '#{maillist}' contains no SFU members. Please try again with a maillist containing SFU members." if members.empty?
+
+      # check if members already exist in canvas
+      existing = members.map do |member|
+        member if Pseudonym.active.where(unique_id: member).exists?
+      end
+      existing.select! { |e| !e.nil? }
+
+      to_create = members - existing
+      throw "All members of maillist '#{maillist}' already exist in Canvas" if to_create.empty?
+
+      prompt = "The following users will be created in Canvas: #{to_create.join(', ')}"
+      prompt += "\nThe following users already exist in Cavnas: #{existing.join(', ')}" if !existing.empty? 
+      puts prompt
+      if !force
+        while true do
+          continue = agree("Continue? ") { |q| q.default = 'y' }
+          puts continue
+          throw "OK, bye!" if !continue
+          break if continue
+        end
+      end
+
+      # for each member of list, get user bio and add to csv
+      puts "Getting user information for maillist members..."
+      csv_data = to_create.map do |username|
+        response = HTTParty.get("https://rest.its.sfu.ca/cgi-bin/WebObjects/AOBRestServer.woa/rest/datastore2/global/accountInfo.js?username=#{username}&art=#{sfu['sfu_rest_token']}")
+        throw "No such SFU user: #{username}" if response.code == 404
+        user_bio = response.parsed_response
+        "\"#{user_bio['sfuid']}\",\"#{user_bio['username']}\",\"#{user_bio['firstnames']}\",\"#{user_bio['lastname']}\",\"#{user_bio['commonname']}\",\"#{user_bio['username']}@sfu.ca\",\"active\""
+      end
+
+      puts "Building CSV..."
+      csv_data = csv_data.join("\n"
+      )
+      # make ze temp file
+      tmp = Tempfile.new(['user', '.csv'])
+      tmp.write("#{CSV_USERS_HEADER}\n#{csv_data}")
+      tmp.close
+
+      # arrrgh attachment.rb
+      def tmp.original_filename; File.basename(self); end
+      
+      puts "Submitting SIS Import..."
+      # create batch
+      batch = SisBatch.create_with_attachment(Account.default, 'instructure_csv', tmp, User.find(1))
+      batch.process_without_send_later
+
+      to_create.each do |user|
+        if Pseudonym.active.where(unique_id: user).exists?
+          puts "Created user #{user}"
+        else
+          puts "WARNING: User #{user} not created!"
+        end
+      end
+    end
+
+    desc 'Delete all users except the canvas@docker admin'
+    task :delete_all_users, [:force] => :environment do |task, args|
+      args.with_defaults(force: false)
+      if (!args.force)
+        require 'highline/import'
+        continue = agree("Are you sure you want to delete all users except user with ID 1 from this Canvas installation? [yes/no] ")
+        if !continue
+          puts "OK, bye!"
+          next
+        end
+      end
+      puts "Deleting all users except user with ID 1"
+      User.active.where.not(id: 1).destroy_all
+    end
   end
 end
 
