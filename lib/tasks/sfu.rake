@@ -5,6 +5,7 @@ def sfu_config
   YAML.load_file './config/sfu.yml'
 end
 
+CSV_USERS_HEADER = "user_id,login_id,first_name,last_name,short_name,email,status"
 
 namespace :sfu do
   desc 'Reset the default Account name and lti_guid. These values need to be reset after a clone from production.'
@@ -99,12 +100,11 @@ namespace :sfu do
       user_bio = response.parsed_response
 
       # ok now we make the CSV datazzzzz
-      csv_header = "user_id,login_id,first_name,last_name,short_name,email,status"
       csv_data = "\"#{user_bio['sfuid']}\",\"#{user_bio['username']}\",\"#{user_bio['firstnames']}\",\"#{user_bio['lastname']}\",\"#{user_bio['commonname']}\",\"#{user_bio['username']}@sfu.ca\",\"active\""
 
       # make ze temp file
       tmp = Tempfile.new(['user', '.csv'])
-      tmp.write("#{csv_header}\n#{csv_data}")
+      tmp.write("#{CSV_USERS_HEADER}\n#{csv_data}")
       tmp.close
 
       # arrrgh attachment.rb
