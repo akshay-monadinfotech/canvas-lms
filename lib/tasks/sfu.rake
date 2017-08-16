@@ -1,12 +1,17 @@
 require 'yaml'
 require 'httparty'
 
+def sfu_config
+  YAML.load_file './config/sfu.yml'
+end
+
+
 namespace :sfu do
   desc 'Reset the default Account name and lti_guid. These values need to be reset after a clone from production.'
   task :account_settings, [:stage] => :environment do |t, args|
     stage = args[:stage]
     raise "You must specify a Canvas Capistrano stage (e.g. testing, staging, etc). `rake sfu:account_settings[stage_name]`" if stage.nil?
-    sfu = YAML.load_file './config/sfu.yml'
+    sfu = sfu_config
     raise "sfu.yml does not contain a `account_settings` block." if sfu['account_settings'].nil?
     raise "You specified `#{stage}` as the stage, but no such stage is defined in sfu.yml." unless sfu['account_settings'].include? stage
 
