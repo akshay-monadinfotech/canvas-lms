@@ -219,6 +219,41 @@ namespace :sfu do
       puts "Deleting all users except user with ID 1"
       User.active.where.not(id: 1).destroy_all
     end
+
+    desc "Creates SFU theme and uploads sfu.{css,js}"
+    task :create_sfu_theme => :environment do
+
+      # enable CSS/JS uploads on the default account
+      account = Account.default
+      account.settings = {global_includes: true, sub_account_includes: true}
+      account.save!
+
+      # create brand config
+      # instead of uploading the files, we can reference them by relative URL
+      brand_config = BrandConfig.for(
+        variables: nil,
+        js_overrides: "/sfu/js/sfu.js",
+        css_overrides: "/sfu/css/sfu-newui.css",
+        mobile_js_overrides: nil,
+        mobile_css_overrides: nil,
+        parent_md5: nil
+      )
+      brand_config.save
+      account.brand_config_md5 = brand_config.md5
+      account.save!
+
+      # create a SharedBrandConfig
+      shared_brand_config = account.shared_brand_configs.new({
+        name: 'SFU',
+        brand_config_md5: brand_config.md5
+      })
+      shared_brand_config.save
+
+      # Generate assets
+      brand_config.save_and_sync_to_s3!
+
+      puts "Create 'SFU' theme. If things look wonky, you may need to run the canvas:compile_assets or canvas:compile_assets_dev task."
+    end 
+
   end
 end
-
